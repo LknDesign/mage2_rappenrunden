@@ -34,6 +34,12 @@ Do not forget to refresh your cache.
 Changelog
 ------------
 
+**Version 0.0.5 [03 February 2026]**
+
+    - Added PHP 8.3 support (tested with PHP 8.3.30)
+    - Added GitHub Actions workflow for automated testing
+
+
 **Version 0.0.4 [03 January 2023]**
 
     - Fix non-numeric value issue

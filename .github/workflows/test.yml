@@ -1,0 +1,135 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: ['7.4', '8.1', '8.2', '8.3']
+    
+    name: PHP ${{ matrix.php-version }} Test
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: mbstring, intl, bcmath, gd, zip
+        coverage: none
+    
+    - name: Validate composer.json
+      run: composer validate --strict
+    
+    - name: Check PHP version
+      run: php --version
+    
+    - name: Install Magento Framework dependencies (mock)
+      run: |
+        mkdir -p vendor/magento/framework/App/Helper
+        mkdir -p vendor/magento/framework/TestFramework/Unit/Helper
+        mkdir -p vendor/magento/module-store/Model
+        mkdir -p vendor/magento/module-backend
+        
+        # Create mock classes for testing
+        cat > vendor/magento/framework/App/Helper/AbstractHelper.php << 'EOF'
+        <?php
+        namespace Magento\Framework\App\Helper;
+        class AbstractHelper {
+            protected $scopeConfig;
+            public function __construct(\Magento\Framework\App\Helper\Context $context) {
+                $this->scopeConfig = $context->getScopeConfig();
+            }
+        }
+        EOF
+        
+        cat > vendor/magento/framework/App/Helper/Context.php << 'EOF'
+        <?php
+        namespace Magento\Framework\App\Helper;
+        class Context {
+            private $scopeConfig;
+            public function __construct($scopeConfig = null) {
+                $this->scopeConfig = $scopeConfig;
+            }
+            public function getScopeConfig() {
+                return $this->scopeConfig;
+            }
+        }
+        EOF
+        
+        cat > vendor/magento/framework/TestFramework/Unit/Helper/ObjectManager.php << 'EOF'
+        <?php
+        namespace Magento\Framework\TestFramework\Unit\Helper;
+        class ObjectManager {
+            public function getConstructArguments($className) {
+                $scopeConfig = $this->createMock('Magento\Framework\App\Config\ScopeConfigInterface');
+                $context = new \Magento\Framework\App\Helper\Context($scopeConfig);
+                return ['context' => $context];
+            }
+            public function getObject($className, $arguments = []) {
+                return new $className($arguments['context']);
+            }
+            private function createMock($className) {
+                return new class {
+                    public function expects($matcher) {
+                        return $this;
+                    }
+                    public function method($methodName) {
+                        return $this;
+                    }
+                    public function will($stub) {
+                        return $this;
+                    }
+                    public function returnValue($value) {
+                        return $value;
+                    }
+                };
+            }
+        }
+        EOF
+        
+        cat > vendor/magento/framework/App/Config/ScopeConfigInterface.php << 'EOF'
+        <?php
+        namespace Magento\Framework\App\Config;
+        interface ScopeConfigInterface {
+            public function getValue($path, $scopeType);
+        }
+        EOF
+        
+        cat > vendor/magento/module-store/Model/ScopeInterface.php << 'EOF'
+        <?php
+        namespace Magento\Store\Model;
+        interface ScopeInterface {
+            const SCOPE_STORE = 'store';
+        }
+        EOF
+        
+        cat > vendor/magento/framework/autoload.php << 'EOF'
+        <?php
+        spl_autoload_register(function ($class) {
+            $prefix = 'Magento\\';
+            if (strpos($class, $prefix) === 0) {
+                $relativeClass = substr($class, strlen($prefix));
+                $file = __DIR__ . '/' . str_replace('\\', '/', $relativeClass) . '.php';
+                if (file_exists($file)) {
+                    require $file;
+                }
+            }
+        });
+        EOF
+    
+    - name: Install PHPUnit
+      run: |
+        composer require --dev phpunit/phpunit "^9.5|^10.0" --no-update
+        composer install --no-interaction --prefer-dist
+    
+    - name: Run Unit Tests
+      run: |
+        vendor/bin/phpunit Test/Unit/
