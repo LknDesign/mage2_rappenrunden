@@ -13,6 +13,11 @@
 !/composer.lock
 !/README.md
 
+# ignore test files #
+#####################
+/test-php83.php
+/phpunit.phar
+/vendor/
 
 # ignore OS generated files #
 ######################
